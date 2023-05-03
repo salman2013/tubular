@@ -120,22 +120,14 @@ def _upload_to_s3(config, filename, dry_run=False):
     Upload the archive file to S3
     """
     try:
-        # s3_connection = S3Connection()
-        # key = bucket.Object('raw/' + datestr + filename)
-        # bucket = s3_connection.get_bucket(config['s3_archive']['bucket_name'])
-        # Dry runs of this script should only generate the retirement archive file, not push it to s3.
-        # key = Key(bucket, 'raw/' + datestr + filename)
-
         datestr = datetime.datetime.now().strftime('%Y/%m/')
         s3 = boto3.resource('s3')
         bucket_name = config['s3_archive']['bucket_name']
-        # bucket = s3.Bucket(bucket_name)
         key = 'raw/' + datestr + filename
         if dry_run:
             LOG('Dry run. Skipping the step to upload data to {}'.format(key))
             return
         else:
-            # key.set_contents_from_filename(filename)
             s3.upload_file(filename, bucket_name, key)
             LOG('Successfully uploaded retirement data to {}'.format(key))
     except Exception as exc:

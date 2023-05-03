@@ -1,6 +1,8 @@
 CHANGES
 =======
 
+* chore: update s3 region
+* test: fix test cases after upgrading script into boto3
 * upgrade script to boto3
 * docs: Update the contributing guidelines link
 * chore: Updating Python Requirements
