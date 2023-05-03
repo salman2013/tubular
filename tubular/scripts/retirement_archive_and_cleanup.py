@@ -129,7 +129,7 @@ def _upload_to_s3(config, filename, dry_run=False):
         datestr = datetime.datetime.now().strftime('%Y/%m/')
         s3 = boto3.resource('s3')
         bucket_name = config['s3_archive']['bucket_name']
-        bucket = s3.Bucket(bucket_name)
+        # bucket = s3.Bucket(bucket_name)
         key = 'raw/' + datestr + filename
         if dry_run:
             LOG('Dry run. Skipping the step to upload data to {}'.format(key))
