@@ -9,8 +9,8 @@ import logging
 import six
 
 import click
-import boto.ec2
-from boto.ec2.autoscale import AutoScaleConnection
+import boto3
+from botocore.exceptions import ClientError
 
 LOG_FILENAME = 'security_group_change.txt'
 logging.basicConfig(level=logging.INFO)
@@ -45,26 +45,29 @@ def add_ingress_rule(dry_run, go_agent_security_group, go_agent_security_group_o
         - If you don't know what this is, ask someone in DevOps.
     - THEN run this script.
     """
-    asg_conn = AutoScaleConnection()
-    ec2_conn = boto.ec2.connect_to_region('us-east-1')
+    asg_conn = boto3.client('autoscaling', region_name='us-east-1')
+    ec2 = boto3.client('ec2', region_name='us-east-1')
     asgs = []
     launch_configs = {}
     security_groups = {}
 
+    response_auto_scalling_group = asg_conn.describe_auto_scaling_groups()
     logging.debug('All ASGs:')
-    for group in asg_conn.get_all_groups():
-        logging.debug('    {}'.format(group))
-        asgs.append(group)
+    for group in response_auto_scalling_group['AutoScalingGroups']
+        logging.debug('    {}'.format(group['AutoScalingGroupName']))
+        asgs.append(group)    
 
+    response_launch_config = asg_conn.describe_launch_configurations()
     logging.debug('All launch configurations:')
-    for launch_config in asg_conn.get_all_launch_configurations():
-        logging.debug('    {}'.format(launch_config))
-        launch_configs[launch_config.name] = launch_config
+    for launch_config in response_launch_config['LaunchConfigurations']:
+        logging.debug('    {}'.format(launch_config['LaunchConfigurationName']))
+        launch_configs[launch_config['LaunchConfigurationName']] = launch_config
 
     logging.debug('All security groups:')
-    for sec_group in ec2_conn.get_all_security_groups():
+    response = ec2.describe_security_groups()
+    for sec_group in response['SecurityGroups']:
         logging.debug('    {}'.format(sec_group))
-        security_groups[sec_group.id] = sec_group
+        security_groups[sec_group['GroupId']] = sec_group
 
     # Validate that each ASG has a launch configuration.
     for group in asgs:
@@ -80,7 +83,7 @@ def add_ingress_rule(dry_run, go_agent_security_group, go_agent_security_group_o
 
     # Construct a fake security group for the prod-tools-goagent-sg security group in the edx-tools account.
     # This group will be used to grant the go-agents ingress into the ASG's VPCs.
-    go_agent_security_group = boto.ec2.securitygroup.SecurityGroup(
+    go_agent_security_group = ec2.SecurityGroup(
         name=go_agent_security_group_name,
         owner_id=go_agent_security_group_owner,
         id=go_agent_security_group
@@ -101,12 +104,15 @@ def add_ingress_rule(dry_run, go_agent_security_group, go_agent_security_group_o
             # Find the security group.
             sec_group = security_groups[sg_name]
         except KeyError:
-            logging.error("Security group '{}' for ASG '{}' was not found!.".format(sg_name, group.name))
-        logging.info('BEFORE: Rules for security group {}:'.format(sec_group.name))
+            logging.error("Security group '{}' for ASG '{}' was not found!.".format(
+                sg_name, group.name))
+        logging.info(
+            'BEFORE: Rules for security group {}:'.format(sec_group.name))
         logging.info(sec_group.rules)
         try:
             # Add the ingress rule to the security group.
-            yes_no = six.moves.input("Apply the change to this security group? [Yes]")
+            yes_no = six.moves.input(
+                "Apply the change to this security group? [Yes]")
             if yes_no in ("", "y", "Y", "yes"):
                 sec_group.authorize(
                     ip_protocol='tcp',
@@ -115,14 +121,14 @@ def add_ingress_rule(dry_run, go_agent_security_group, go_agent_security_group_o
                     src_group=go_agent_security_group,
                     dry_run=dry_run
                 )
-        except boto.exception.EC2ResponseError as exc:
-            if exc.status == 412:
+        except ClientError as exc:
+            if exc.response['ResponseMetadata']['HTTPStatusCode'] == 412:
                 # If the dry_run flag is set, then each rule addition will raise this exception.
                 # Log it and carry on.
                 logging.info('Dry run is True but rule addition would have succeeded for security group {}.'.format(
                     sg_name
                 ))
-            elif exc.code == "InvalidPermission.Duplicate":
+            elif exc.response['Error']['Code'] == 'InvalidPermission.Duplicate':
                 logging.info("Rule already exists for {}.".format(sg_name))
             else:
                 raise
